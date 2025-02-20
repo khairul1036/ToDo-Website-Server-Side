@@ -70,55 +70,53 @@ async function run() {
 
     // Update task status (dragging between columns)
     app.patch("/tasks/:id", async (req, res) => {
-      const { id } = req.params;
-      const { status, newOrder } = req.body;
-
-      try {
-        const result = await tasksCollection.updateOne(
-          { _id: new ObjectId(id) },
-          { $set: { status, order: newOrder } }
-        );
-
-        if (result.modifiedCount === 0) {
-          return res.status(404).json({ error: "Task not found" });
+        const { id } = req.params;
+        const { category, newOrder } = req.body;
+      
+        try {
+          const result = await tasksCollection.updateOne(
+            { _id: new ObjectId(id) },
+            { $set: { category, order: newOrder } }
+          );
+      
+          if (result.modifiedCount === 0) {
+            return res.status(404).json({ error: "Task not found" });
+          }
+      
+          io.emit("taskUpdated", { id, status, newOrder });
+          res.status(200).json({ message: "Task updated successfully" });
+        } catch (err) {
+          console.error("Update error:", err);
+          res.status(500).json({ error: "Failed to update task" });
         }
-
-        io.emit("taskUpdated", { id, status, newOrder });
-        res.status(200).json({ message: "Task updated successfully" });
-      } catch (err) {
-        console.error("Update error:", err);
-        res.status(500).json({ error: "Failed to update task" });
-      }
-    });
+      });
+      
 
     // reorder task
     app.post("/tasks/reorder", async (req, res) => {
-      const { category, tasks } = req.body;
-
-      try {
-        const bulkUpdates = tasks.map(({ _id, order }) => ({
-          updateOne: {
-            filter: { _id: new ObjectId(_id) },
-            update: { $set: { order } },
-          },
-        }));
-
-        if (bulkUpdates.length > 0) {
-          await tasksCollection.bulkWrite(bulkUpdates);
+        const { category, tasks } = req.body;
+      
+        try {
+          const bulkUpdates = tasks.map(({ _id, order }) => ({
+            updateOne: {
+              filter: { _id: new ObjectId(_id) },
+              update: { $set: { order } },
+            },
+          }));
+      
+          if (bulkUpdates.length > 0) {
+            await tasksCollection.bulkWrite(bulkUpdates);
+          }
+      
+          const updatedTasks = await tasksCollection.find().toArray();
+          io.emit("taskUpdated", updatedTasks);
+      
+          res.status(200).json({ success: true, message: "Tasks reordered successfully." });
+        } catch (error) {
+          res.status(500).json({ success: false, error: error.message });
         }
-
-        // Fetch updated tasks
-        const updatedTasks = await tasksCollection.find().toArray();
-        io.emit("taskUpdated", updatedTasks); // Emit real-time update to all clients
-
-        res
-          .status(200)
-          .json({ success: true, message: "Tasks reordered successfully." });
-      } catch (error) {
-        console.error("Reordering error:", error);
-        res.status(500).json({ success: false, error: error.message });
-      }
-    });
+      });
+      
 
     // Delete a task
     app.delete("/tasks/:id", async (req, res) => {
